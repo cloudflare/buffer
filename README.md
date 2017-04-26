@@ -11,3 +11,5 @@ suits our needs more effectively.  Namely, insertions into a full buffer do not
 overwrite existing records.  Instead an error is returned to the caller forcing
 a decision on how to handle.
 
+At this time, Cloudflare provides *no guarantees* about the stability of this
+pacakge.  Please use vendoring to maintain this dependency in your project.
