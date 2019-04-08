@@ -265,7 +265,7 @@ func TestHelpers(t *testing.T) {
 		t.Errorf("metadata structs do not match. expect: %v, actual: %v", c.expect, m)
 	}
 	if b.Size() != int(m.size) {
-		t.Errorf("Reported size does not match meatadata")
+		t.Errorf("Reported size does not match metadata")
 	}
 	os.Remove(filename)
 }
