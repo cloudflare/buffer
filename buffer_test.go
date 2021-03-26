@@ -112,9 +112,15 @@ func TestAll(t *testing.T) {
 				t.Logf("%v", string(val))
 			}
 		}
+		if err = b.Sync(); err != nil {
+			t.Errorf("Failed to sync: %v", err)
+		}
 		m := b.readmeta()
 		if c.expect != m {
 			t.Errorf("metadata structs do not match for %d. expect: %v, actual: %v", i, c.expect, m)
+		}
+		if err = b.Close(); err != nil {
+			t.Errorf("Failed to close: %v", err)
 		}
 		os.Remove(filename)
 	}

@@ -6,8 +6,13 @@ import (
 	"os"
 	"sync"
 	"syscall"
+	"unsafe"
 
 	"github.com/cloudflare/buffer/binary"
+)
+
+var (
+	ErrNotOpen = errors.New("Not open")
 )
 
 // Buffer data format
@@ -282,4 +287,33 @@ func New(filename string, capacity int) (*Buffer, error) {
 	}
 
 	return b, nil
+}
+
+func (b *Buffer) Sync() (err error) {
+	b.Lock()
+	defer b.Unlock()
+	//check that our data isn't nil
+	if len(b.data) == 0 {
+		return ErrNotOpen
+	}
+	//call a blocking msync
+	base := uintptr(unsafe.Pointer(&b.data[0]))
+	sz := uintptr(len(b.data))
+	if _, _, errno := syscall.Syscall(syscall.SYS_MSYNC, base, sz, 0x4); errno != 0 {
+		err = errno
+	}
+	return
+}
+
+func (b *Buffer) Close() (err error) {
+	b.Lock()
+	defer b.Unlock()
+	//check that our data isn't nil
+	if b.data == nil {
+		return ErrNotOpen
+	}
+	//unmap and set the buffer to nil
+	err = syscall.Munmap(b.data)
+	b.data = nil
+	return
 }
