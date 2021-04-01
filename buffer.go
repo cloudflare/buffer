@@ -246,7 +246,7 @@ func New(filename string, capacity int) (*Buffer, error) {
 
 	// TODO: don't assume filename given is a good file.
 	// TODO: get passed in open file?
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
+	if _, err = os.Stat(filename); os.IsNotExist(err) {
 		f, err = os.Create(filename)
 		if err != nil {
 			return nil, err
@@ -261,7 +261,13 @@ func New(filename string, capacity int) (*Buffer, error) {
 	if err := syscall.Truncate(filename, int64(capacity)); err != nil {
 		return nil, err
 	}
+	return open(f, newFile, capacity)
+}
 
+func open(f *os.File, newFile bool, capacity int) (*Buffer, error) {
+	if f == nil || capacity <= 0 {
+		return nil, errors.New("Bad parameters")
+	}
 	data, err := syscall.Mmap(
 		int(f.Fd()), 0, capacity,
 		syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED,
@@ -272,7 +278,9 @@ func New(filename string, capacity int) (*Buffer, error) {
 	// don't need this anymore
 	f.Close()
 
-	b := &Buffer{data: data}
+	b := &Buffer{
+		data: data,
+	}
 
 	if newFile {
 		m := meta{
@@ -287,6 +295,24 @@ func New(filename string, capacity int) (*Buffer, error) {
 	}
 
 	return b, nil
+}
+
+// Open will open an existing buffer, if the file does not exist an error is returned
+func Open(filename string) (*Buffer, error) {
+	var (
+		f        *os.File
+		err      error
+		capacity int64
+	)
+	f, err = os.OpenFile(filename, os.O_RDWR, 0644)
+	if err != nil {
+		return nil, err
+	} else if fi, err := f.Stat(); err != nil {
+		return nil, err
+	} else {
+		capacity = fi.Size()
+	}
+	return open(f, false, int(capacity))
 }
 
 func (b *Buffer) Sync() (err error) {
