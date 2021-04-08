@@ -406,6 +406,9 @@ func Open(filename string, capacity int) (*Buffer, error) {
 	)
 
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
+		if capacity <= 0 {
+			return nil, errors.New("Bad capacity")
+		}
 		f, err = os.Create(filename)
 		if err != nil {
 			return nil, err
@@ -424,7 +427,9 @@ func Open(filename string, capacity int) (*Buffer, error) {
 			f.Close()
 			return nil, err
 		}
-		if m.cap > uint64(capacity) {
+		if capacity == 0 {
+			capacity = int(m.cap)
+		} else if m.cap > uint64(capacity) {
 			f.Close()
 			return nil, errors.New("Cannot shrink existing file")
 		} else if uint64(capacity) > m.cap {
