@@ -4,6 +4,7 @@ package buffer
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"syscall"
@@ -53,9 +54,8 @@ const (
 	magicHeaderSize = 16
 )
 
-var (
-	magicHeader = []byte(`CLOUDFLAREBUFFER`)
-)
+//CLOUDFLAREBUFFER
+var magicHeader = [16]byte{0x43, 0x4c, 0x4f, 0x55, 0x44, 0x46, 0x4c, 0x41, 0x52, 0x45, 0x42, 0x55, 0x46, 0x45, 0x52}
 
 const (
 	offMagic       = 0
@@ -75,7 +75,7 @@ func readmeta(f *os.File) (m meta, err error) {
 	var buff []byte
 	if f == nil {
 		err = ErrNotOpen
-	} else if fi, err = f.Stat(); err != nil {
+	} else if fi, err = f.Stat(); err == nil {
 		if sz := fi.Size(); sz == 0 {
 			err = ErrEmpty
 		} else if sz < offData {
@@ -89,17 +89,17 @@ func readmeta(f *os.File) (m meta, err error) {
 				return
 			} else if n != len(buff) {
 				err = errors.New("Failed read")
-			} else if !bytes.Equal(buff[0:magicHeaderSize], magicHeader) {
+			} else if !bytes.Equal(buff[0:magicHeaderSize], magicHeader[:]) {
 				err = ErrCorrupt
 			}
-
+			fmt.Println("READ", buff)
 		}
 	}
-	if err != nil || len(buff) < offData {
+	if err != nil {
 		return
 	}
 	//do the actual extration
-	m = getMeta(buff[offSize:])
+	m = getMeta(buff)
 	//check the capacity against the file size
 	if uint64(fi.Size()) != m.cap {
 		err = ErrCorrupt
@@ -108,17 +108,19 @@ func readmeta(f *os.File) (m meta, err error) {
 	return
 }
 
-func getMeta(b []byte) meta {
-	return meta{
-		size: binary.GetLittleEndianUint64(b, offSize),
-		roff: binary.GetLittleEndianUint64(b, offNextRead),
-		woff: binary.GetLittleEndianUint64(b, offNextWrite),
-		cap:  binary.GetLittleEndianUint64(b, offMaxCapacity),
+func getMeta(b []byte) (m meta) {
+	m = meta{
+		magic: magicHeader,
+		size:  binary.GetLittleEndianUint64(b, offSize),
+		roff:  binary.GetLittleEndianUint64(b, offNextRead),
+		woff:  binary.GetLittleEndianUint64(b, offNextWrite),
+		cap:   binary.GetLittleEndianUint64(b, offMaxCapacity),
 	}
+	return
 }
 
 func putMeta(m meta, b []byte) {
-	copy(b, magicHeader)
+	copy(b, magicHeader[:])
 	binary.PutLittleEndianUint64(b, offSize, m.size)
 	binary.PutLittleEndianUint64(b, offNextRead, m.roff)
 	binary.PutLittleEndianUint64(b, offNextWrite, m.woff)
@@ -381,10 +383,11 @@ func New(filename string, capacity int) (*Buffer, error) {
 	if newFile {
 		b.Lock()
 		*b.m = meta{
-			size: 0,
-			woff: offData,
-			roff: offData,
-			cap:  uint64(capacity),
+			magic: magicHeader,
+			size:  0,
+			woff:  offData,
+			roff:  offData,
+			cap:   uint64(capacity),
 		}
 		b.Unlock()
 	}
@@ -395,8 +398,7 @@ func New(filename string, capacity int) (*Buffer, error) {
 // Open will open an existing Buffer backed by the given file
 // If the file does not exist it will be created
 // If the buffer is new it will be set to the given capacity
-// if the file already exists, AND the given capacity is larger, the file will be expanded
-// if the file already exists and the capacity is smaller, an error is returned
+// if the file already exists the capacity is ignored and we use the existing capacity
 func Open(filename string, capacity int) (*Buffer, error) {
 	var (
 		newFile bool
@@ -405,12 +407,16 @@ func Open(filename string, capacity int) (*Buffer, error) {
 		m       meta
 	)
 
+	fmt.Println("OPEN", capacity)
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		if capacity <= 0 {
 			return nil, errors.New("Bad capacity")
 		}
-		f, err = os.Create(filename)
-		if err != nil {
+		if f, err = os.Create(filename); err != nil {
+			return nil, err
+		}
+		if err := syscall.Truncate(filename, int64(capacity)); err != nil {
+			f.Close()
 			return nil, err
 		}
 		newFile = true
@@ -427,24 +433,15 @@ func Open(filename string, capacity int) (*Buffer, error) {
 			f.Close()
 			return nil, err
 		}
-		if capacity == 0 {
-			capacity = int(m.cap)
-		} else if m.cap > uint64(capacity) {
-			f.Close()
-			return nil, errors.New("Cannot shrink existing file")
-		} else if uint64(capacity) > m.cap {
-			m.cap = uint64(capacity)
-		}
-	}
-	if err := syscall.Truncate(filename, int64(capacity)); err != nil {
-		f.Close()
-		return nil, err
+		fmt.Printf("%+v\n", m)
+		capacity = int(m.cap)
 	}
 	b, err := open(f, capacity)
 	if err != nil {
 		f.Close()
 		return nil, err
 	}
+	fmt.Println("OPEN: ", capacity, m.cap)
 	if newFile {
 		b.Lock()
 		*b.m = m

@@ -47,10 +47,11 @@ func TestAll(t *testing.T) {
 				{"Helloooo", write},
 			},
 			expect: meta{
-				size: 32,
-				woff: 48,
-				roff: 48,
-				cap:  80,
+				magic: magicHeader,
+				size:  32,
+				woff:  48,
+				roff:  48,
+				cap:   80,
 			},
 		},
 		tc{ // happy test
@@ -60,10 +61,11 @@ func TestAll(t *testing.T) {
 				{"小洞不补, 大洞吃苦.", read},
 			},
 			expect: meta{
-				size: 35,
-				woff: 118,
-				roff: 83,
-				cap:  124,
+				magic: magicHeader,
+				size:  35,
+				woff:  118,
+				roff:  83,
+				cap:   124,
 			},
 		},
 		tc{ // Tests read/write for recMeta wrap
@@ -74,10 +76,11 @@ func TestAll(t *testing.T) {
 				{"小洞不补, 大洞吃苦.", read},
 			},
 			expect: meta{
-				size: 0,
-				woff: 80,
-				roff: 80,
-				cap:  86,
+				magic: magicHeader,
+				size:  0,
+				woff:  80,
+				roff:  80,
+				cap:   86,
 			},
 		},
 		tc{ // Tests read/write for data wrapping
@@ -88,10 +91,11 @@ func TestAll(t *testing.T) {
 				{"小洞不补, 大洞吃苦.", read},
 			},
 			expect: meta{
-				size: 0,
-				woff: 58,
-				roff: 58,
-				cap:  86,
+				magic: magicHeader,
+				size:  0,
+				woff:  58,
+				roff:  58,
+				cap:   86,
 			},
 		},
 	}
@@ -151,6 +155,14 @@ func TestAll(t *testing.T) {
 		if err = b.Close(); err != nil {
 			t.Errorf("Failed to close: %v", err)
 		}
+
+		//test open close with no capacity specified
+		if b, err = Open(filename, 0); err != nil {
+			t.Errorf("Failed to re-open: %v", err)
+		} else if err = b.Close(); err != nil {
+			t.Errorf("Failed to close: %v", err)
+		}
+
 	}
 }
 
@@ -163,10 +175,11 @@ func TestErrors(t *testing.T) {
 			},
 			err: errOverflow,
 			expect: meta{
-				size: 21,
-				woff: 69,
-				roff: 48,
-				cap:  80,
+				magic: magicHeader,
+				size:  21,
+				woff:  69,
+				roff:  48,
+				cap:   80,
 			},
 		},
 		tc{
@@ -175,10 +188,11 @@ func TestErrors(t *testing.T) {
 			},
 			err: errToBig,
 			expect: meta{
-				size: 0,
-				woff: 48,
-				roff: 48,
-				cap:  64,
+				magic: magicHeader,
+				size:  0,
+				woff:  48,
+				roff:  48,
+				cap:   64,
 			},
 		},
 		tc{
@@ -187,10 +201,11 @@ func TestErrors(t *testing.T) {
 			},
 			err: nil,
 			expect: meta{
-				size: 0,
-				woff: 48,
-				roff: 48,
-				cap:  80,
+				magic: magicHeader,
+				size:  0,
+				woff:  48,
+				roff:  48,
+				cap:   80,
 			},
 		},
 	}
@@ -238,10 +253,11 @@ func TestHelpers(t *testing.T) {
 		},
 		err: errOverflow,
 		expect: meta{
-			size: 21,
-			woff: 69,
-			roff: 48,
-			cap:  80,
+			magic: magicHeader,
+			size:  21,
+			woff:  69,
+			roff:  48,
+			cap:   80,
 		},
 	}
 	filename := tempFileName(t) //located in testing.T tempdir, no need to remove
@@ -325,10 +341,11 @@ func TestOverlap(t *testing.T) {
 			{"Helloooo", write},
 		},
 		expect: meta{
-			size: 32,
-			woff: 64, //do to the loop
-			roff: 64,
-			cap:  80,
+			magic: magicHeader,
+			size:  32,
+			woff:  64, //do to the loop
+			roff:  64,
+			cap:   80,
 		},
 	}
 	filename := tempFileName(t) //located in testing.T tempdir, no need to remove
