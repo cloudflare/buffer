@@ -4,7 +4,6 @@ package buffer
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"os"
 	"sync"
 	"syscall"
@@ -92,7 +91,6 @@ func readmeta(f *os.File) (m meta, err error) {
 			} else if !bytes.Equal(buff[0:magicHeaderSize], magicHeader[:]) {
 				err = ErrCorrupt
 			}
-			fmt.Println("READ", buff)
 		}
 	}
 	if err != nil {
@@ -407,7 +405,6 @@ func Open(filename string, capacity int) (*Buffer, error) {
 		m       meta
 	)
 
-	fmt.Println("OPEN", capacity)
 	if _, err := os.Stat(filename); os.IsNotExist(err) {
 		if capacity <= 0 {
 			return nil, errors.New("Bad capacity")
@@ -433,7 +430,6 @@ func Open(filename string, capacity int) (*Buffer, error) {
 			f.Close()
 			return nil, err
 		}
-		fmt.Printf("%+v\n", m)
 		capacity = int(m.cap)
 	}
 	b, err := open(f, capacity)
@@ -441,7 +437,6 @@ func Open(filename string, capacity int) (*Buffer, error) {
 		f.Close()
 		return nil, err
 	}
-	fmt.Println("OPEN: ", capacity, m.cap)
 	if newFile {
 		b.Lock()
 		*b.m = m
