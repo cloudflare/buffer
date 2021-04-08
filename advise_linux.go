@@ -15,13 +15,11 @@ func (b *Buffer) Advise() error {
 	b.Lock()
 	defer b.Unlock()
 
-	m := b.readmeta()
-
 	// Start of next page above write offset
-	wo := int(m.woff) + (pageSize - int(m.woff)%pageSize)
+	wo := int(b.m.woff) + (pageSize - int(b.m.woff)%pageSize)
 
 	// Start of page below read offset
-	ro := int(m.roff) - int(m.roff)%pageSize
+	ro := int(b.m.roff) - int(b.m.roff)%pageSize
 
 	if ro > wo {
 		return syscall.Madvise(b.data[wo:ro], syscall.MADV_DONTNEED)
@@ -34,8 +32,8 @@ func (b *Buffer) Advise() error {
 			return err
 		}
 	}
-	if wo < int(m.cap) {
-		return syscall.Madvise(b.data[wo:m.cap], syscall.MADV_DONTNEED)
+	if wo < int(b.m.cap) {
+		return syscall.Madvise(b.data[wo:b.m.cap], syscall.MADV_DONTNEED)
 	}
 	return nil
 }
