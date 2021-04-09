@@ -405,7 +405,7 @@ func Open(filename string, capacity int) (*Buffer, error) {
 		m       meta
 	)
 
-	if _, err := os.Stat(filename); os.IsNotExist(err) {
+	if fi, err := os.Stat(filename); os.IsNotExist(err) || (err == nil && fi.Size() == 0) {
 		if capacity <= 0 {
 			return nil, errors.New("Bad capacity")
 		}
@@ -418,13 +418,16 @@ func Open(filename string, capacity int) (*Buffer, error) {
 		}
 		newFile = true
 		m = meta{
-			size: 0,
-			woff: offData,
-			roff: offData,
-			cap:  uint64(capacity),
+			magic: magicHeader,
+			size:  0,
+			woff:  offData,
+			roff:  offData,
+			cap:   uint64(capacity),
 		}
+	} else if err != nil {
+		return nil, err //some other error
 	} else {
-		if f, err = os.OpenFile(filename, os.O_RDWR, 0644); err != nil {
+		if f, err = os.OpenFile(filename, os.O_RDWR, 0640); err != nil {
 			return nil, err
 		} else if m, err = readmeta(f); err != nil {
 			f.Close()
