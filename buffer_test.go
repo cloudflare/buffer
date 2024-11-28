@@ -1,6 +1,7 @@
 package buffer
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -23,6 +24,21 @@ type tc struct {
 	err    error
 }
 
+var (
+	td string
+)
+
+func TestMain(m *testing.M) {
+	var err error
+	if td, err = ioutil.TempDir(os.TempDir(), "buffer"); err != nil {
+		fmt.Println("Failed to make temporary directory", err)
+		os.Exit(-1)
+	}
+	r := m.Run()
+	os.RemoveAll(td)
+	os.Exit(r)
+}
+
 func TestAll(t *testing.T) {
 	cases := []tc{
 		tc{ // happy test
@@ -31,10 +47,11 @@ func TestAll(t *testing.T) {
 				{"Helloooo", write},
 			},
 			expect: meta{
-				size: 32,
-				woff: 32,
-				roff: 32,
-				cap:  64,
+				magic: magicHeader,
+				size:  32,
+				woff:  48,
+				roff:  48,
+				cap:   80,
 			},
 		},
 		tc{ // happy test
@@ -44,10 +61,11 @@ func TestAll(t *testing.T) {
 				{"小洞不补, 大洞吃苦.", read},
 			},
 			expect: meta{
-				size: 35,
-				woff: 102,
-				roff: 67,
-				cap:  108,
+				magic: magicHeader,
+				size:  35,
+				woff:  118,
+				roff:  83,
+				cap:   124,
 			},
 		},
 		tc{ // Tests read/write for recMeta wrap
@@ -58,10 +76,11 @@ func TestAll(t *testing.T) {
 				{"小洞不补, 大洞吃苦.", read},
 			},
 			expect: meta{
-				size: 0,
-				woff: 64,
-				roff: 64,
-				cap:  70,
+				magic: magicHeader,
+				size:  0,
+				woff:  80,
+				roff:  80,
+				cap:   86,
 			},
 		},
 		tc{ // Tests read/write for data wrapping
@@ -72,25 +91,16 @@ func TestAll(t *testing.T) {
 				{"小洞不补, 大洞吃苦.", read},
 			},
 			expect: meta{
-				size: 0,
-				woff: 42,
-				roff: 42,
-				cap:  70,
+				magic: magicHeader,
+				size:  0,
+				woff:  58,
+				roff:  58,
+				cap:   86,
 			},
 		},
 	}
-
 	for i, c := range cases {
-		f, err := ioutil.TempFile("tests", "tmpBufTest")
-		if err != nil {
-			t.Fatalf("Unexpected failure creating temp file: %v", err)
-		}
-		// only want it for the name? TODO: figure a better way to do this
-		filename := f.Name()
-		err = os.Remove(filename)
-		if err != nil {
-			t.Fatalf("Unexpected failure removing temp file: %v", err)
-		}
+		filename := tempFileName(t) //located in testing.T tempdir, no need to remove
 		b, err := New(filename, int(c.expect.cap))
 		if err != nil {
 			t.Errorf("Unexpected failure creating buffer for case: %d", i)
@@ -112,11 +122,47 @@ func TestAll(t *testing.T) {
 				t.Logf("%v", string(val))
 			}
 		}
+		if err = b.Sync(); err != nil {
+			t.Errorf("Failed to sync: %v", err)
+		}
 		m := b.readmeta()
 		if c.expect != m {
 			t.Errorf("metadata structs do not match for %d. expect: %v, actual: %v", i, c.expect, m)
 		}
-		os.Remove(filename)
+		if err = b.Close(); err != nil {
+			t.Errorf("Failed to close: %v", err)
+		}
+
+		//re-open the file with Open
+		if b, err = Open(filename, int(c.expect.cap)); err != nil {
+			t.Errorf("Failed to re-open: %v", err)
+		}
+		if m = b.readmeta(); c.expect != m {
+			t.Errorf("metadata structs do not match for %d. expect: %v, actual: %v", i, c.expect, m)
+		}
+		if err = b.Close(); err != nil {
+			t.Errorf("Failed to close: %v", err)
+		}
+
+		//re-open the file with Open and an expansion
+		if b, err = Open(filename, int(c.expect.cap+1024)); err != nil {
+			t.Errorf("Failed to re-open: %v", err)
+		}
+		m.cap += 1024
+		if m = b.readmeta(); c.expect != m {
+			t.Errorf("metadata structs do not match for %d. expect: %v, actual: %v", i, c.expect, m)
+		}
+		if err = b.Close(); err != nil {
+			t.Errorf("Failed to close: %v", err)
+		}
+
+		//test open close with no capacity specified
+		if b, err = Open(filename, 0); err != nil {
+			t.Errorf("Failed to re-open: %v", err)
+		} else if err = b.Close(); err != nil {
+			t.Errorf("Failed to close: %v", err)
+		}
+
 	}
 }
 
@@ -129,10 +175,11 @@ func TestErrors(t *testing.T) {
 			},
 			err: errOverflow,
 			expect: meta{
-				size: 21,
-				woff: 53,
-				roff: 32,
-				cap:  64,
+				magic: magicHeader,
+				size:  21,
+				woff:  69,
+				roff:  48,
+				cap:   80,
 			},
 		},
 		tc{
@@ -141,10 +188,11 @@ func TestErrors(t *testing.T) {
 			},
 			err: errToBig,
 			expect: meta{
-				size: 0,
-				woff: 32,
-				roff: 32,
-				cap:  48,
+				magic: magicHeader,
+				size:  0,
+				woff:  48,
+				roff:  48,
+				cap:   64,
 			},
 		},
 		tc{
@@ -153,26 +201,16 @@ func TestErrors(t *testing.T) {
 			},
 			err: nil,
 			expect: meta{
-				size: 0,
-				woff: 32,
-				roff: 32,
-				cap:  64,
+				magic: magicHeader,
+				size:  0,
+				woff:  48,
+				roff:  48,
+				cap:   80,
 			},
 		},
 	}
-
 	for i, c := range cases {
-		f, err := ioutil.TempFile("tests", "tmpBufTest")
-		if err != nil {
-			t.Fatalf("Unexpected failure creating temp file: %v", err)
-		}
-
-		// only want it for the name? TODO: figure a better way to do this
-		filename := f.Name()
-		err = os.Remove(filename)
-		if err != nil {
-			t.Fatalf("Unexpected failure removing temp file: %v", err)
-		}
+		filename := tempFileName(t) //located in testing.T tempdir, no need to remove
 		b, err := New(filename, int(c.expect.cap))
 		if err != nil {
 			t.Errorf("Unexpected failure creating buffer for case: %d", i)
@@ -203,7 +241,6 @@ func TestErrors(t *testing.T) {
 		if c.expect != m {
 			t.Errorf("metadata structs do not match for %d. expect: %v, actual: %v", i, c.expect, m)
 		}
-		os.Remove(filename)
 	}
 }
 
@@ -216,24 +253,14 @@ func TestHelpers(t *testing.T) {
 		},
 		err: errOverflow,
 		expect: meta{
-			size: 21,
-			woff: 53,
-			roff: 32,
-			cap:  64,
+			magic: magicHeader,
+			size:  21,
+			woff:  69,
+			roff:  48,
+			cap:   80,
 		},
 	}
-
-	f, err := ioutil.TempFile("tests", "tmpBufTest")
-	if err != nil {
-		t.Fatalf("Unexpected failure creating temp file: %v", err)
-	}
-
-	// only want it for the name? TODO: figure a better way to do this
-	filename := f.Name()
-	err = os.Remove(filename)
-	if err != nil {
-		t.Fatalf("Unexpected failure removing temp file: %v", err)
-	}
+	filename := tempFileName(t) //located in testing.T tempdir, no need to remove
 	b, err := New(filename, int(c.expect.cap))
 	if err != nil {
 		t.Errorf("Unexpected failure creating buffer: %v", err)
@@ -250,7 +277,7 @@ func TestHelpers(t *testing.T) {
 				t.Errorf("Unexpected Insert failure. err: %v", err)
 			}
 		} else {
-			_, err := b.Pop()
+			_, err = b.Pop()
 			switch err {
 			case c.err:
 				break
@@ -267,22 +294,10 @@ func TestHelpers(t *testing.T) {
 	if b.Size() != int(m.size) {
 		t.Errorf("Reported size does not match metadata")
 	}
-	os.Remove(filename)
 }
 
 func TestAdvise(t *testing.T) {
-	f, err := ioutil.TempFile("tests", "tmpBufTest")
-	if err != nil {
-		t.Fatalf("Unexpected failure creating temp file: %v", err)
-	}
-
-	// only want it for the name? TODO: figure a better way to do this
-	filename := f.Name()
-	err = os.Remove(filename)
-	if err != nil {
-		t.Fatalf("Unexpected failure removing temp file: %v", err)
-	}
-
+	filename := tempFileName(t) //located in testing.T tempdir, no need to remove
 	recordSize := 1000
 	// 20 records precisely
 	cap := (20*(recordSize+recMeta) + offData)
@@ -316,25 +331,80 @@ func TestAdvise(t *testing.T) {
 	if err != nil {
 		t.Errorf("unexpected error in advise: %v", err)
 	}
+}
 
-	os.Remove(filename)
+func TestOverlap(t *testing.T) {
+	c := tc{ // happy test
+		ops: []operation{
+			{"Wooorldd", write},
+			{"Helloooo", write},
+			{"Helloooo", write},
+		},
+		expect: meta{
+			magic: magicHeader,
+			size:  32,
+			woff:  64, //do to the loop
+			roff:  64,
+			cap:   80,
+		},
+	}
+	filename := tempFileName(t) //located in testing.T tempdir, no need to remove
+	b, err := New(filename, int(c.expect.cap))
+	if err != nil {
+		t.Errorf("Unexpected failure creating buffer")
+	}
+	for _, op := range c.ops {
+		if op.write {
+			err := b.InsertWithOverwrite([]byte(op.value))
+			if err != nil {
+				t.Errorf("Unexpected Insert failure: %v", err)
+			}
+		} else {
+			val, err := b.Pop()
+			if err != nil {
+				t.Errorf("Unexpected Pop failure: %v", err)
+			}
+			if string(val) != op.value {
+				t.Errorf("Values do not match expected: %v actual: %v", op.value, val)
+			}
+			t.Logf("%v", string(val))
+		}
+	}
+	if err = b.Sync(); err != nil {
+		t.Errorf("Failed to sync: %v", err)
+	}
+	m := b.readmeta()
+	if c.expect != m {
+		t.Errorf("metadata structs do not match expect: %v, actual: %v", c.expect, m)
+	}
+
+	//make sure we can only pop 2
+	var buffs []string
+	for {
+		if buff, err := b.Pop(); err != nil {
+			t.Errorf("Failed to pop: %v", err)
+		} else if buff == nil {
+			break
+		} else {
+			buffs = append(buffs, string(buff))
+		}
+	}
+	if err = b.Close(); err != nil {
+		t.Errorf("Failed to close: %v", err)
+	}
+	if len(buffs) != 2 {
+		t.Errorf("Too many entries came back out: %d != 2", len(buffs))
+	}
+	if buffs[0] != string(c.ops[1].value) || buffs[1] != string(c.ops[2].value) {
+		t.Errorf("invalid output: %v", buffs)
+	}
 }
 
 // benchBuffer tests reading/writing count batches of size batch in sequential chunks
 // with file capacity cap
 func benchBuffer(cap, recordSize int, b *testing.B) {
+	filename := tempFileName(b) //located in testing.T tempdir, no need to remove
 
-	f, err := ioutil.TempFile("tests", "tmpBufTest")
-	if err != nil {
-		b.Fatalf("Unexpected failure creating temp file: %v", err)
-	}
-
-	// only want it for the name? TODO: figure a better way to do this
-	filename := f.Name()
-	err = os.Remove(filename)
-	if err != nil {
-		b.Fatalf("Unexpected failure removing temp file: %v", err)
-	}
 	buf, err := New(filename, int(cap))
 	if err != nil {
 		b.Errorf("Unexpected failure creating buffer.")
@@ -352,8 +422,6 @@ func benchBuffer(cap, recordSize int, b *testing.B) {
 			b.Fatalf("Unexpected error while popping: %v", err)
 		}
 	}
-
-	os.Remove(filename)
 }
 
 func BenchmarkBuffer50KBCap1KBRec(b *testing.B) {
@@ -374,4 +442,22 @@ func BenchmarkBuffer500MBCap1KBRec(b *testing.B) {
 func BenchmarkBuffer500MBCap1MBRec(b *testing.B) {
 	// 500MB file, 1MB record
 	benchBuffer(500*1000*1000, 1000*1000, b)
+}
+
+func tempFileName(t ft) (s string) {
+	f, err := ioutil.TempFile(td, "tmpBufTest")
+	if err != nil {
+		t.Fatalf("Unexpected failure creating temp file: %v", err)
+	}
+	s = f.Name()
+	if err = f.Close(); err != nil {
+		t.Fatalf("Failed to close file: %v", err)
+	} else if err = os.Remove(s); err != nil {
+		t.Fatalf("Unexpected failure removing temp file: %v", err)
+	}
+	return
+}
+
+type ft interface {
+	Fatalf(f string, args ...interface{})
 }
